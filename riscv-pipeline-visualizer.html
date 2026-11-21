@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RISC-V Pipeline Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f6f8;--panel:#fff;--ink:#14181f;--mut:#566170;--line:#d5dbe3;--hl:#fff1b8;--acc:#1f6f8b;
+--IF:#1f6f8b;--ID:#4a55b8;--EX:#9a5b00;--MEM:#a8326f;--WB:#2b7a45;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1217;--panel:#161b22;--ink:#e8ecf1;--mut:#98a2b0;--line:#2a323d;--hl:#3b3512;--acc:#5bb4d3;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1217;--panel:#161b22;--ink:#e8ecf1;--mut:#98a2b0;--line:#2a323d;--hl:#3b3512;--acc:#5bb4d3;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Bricolage Grotesque",system-ui,sans-serif}
+.mono,textarea,table,.regs,.chips,.log{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+main{max-width:1200px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:clamp(26px,4vw,38px);line-height:1.1;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:var(--mut);margin:0 0 18px;max-width:62ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+button,select{font:inherit;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+label.t{display:flex;gap:6px;align-items:center;margin-left:auto;color:var(--mut)}
+.stages{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.st{border-radius:10px;padding:8px 10px;color:#fff;min-height:64px;min-width:0}
+.st b{display:block;font-size:13px;letter-spacing:.02em}
+.st span{display:block;font-family:"JetBrains Mono",monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st.empty{background:var(--panel)!important;color:var(--mut);border:1px dashed var(--line)}
+.st.stall{background-image:repeating-linear-gradient(135deg,rgba(0,0,0,.28) 0 6px,transparent 6px 12px)}
+.IF{background:var(--IF)}.ID{background:var(--ID)}.EX{background:var(--EX)}.MEM{background:var(--MEM)}.WB{background:var(--WB)}
+.cols{display:grid;grid-template-columns:260px 1fr;gap:14px}
+@media(max-width:820px){.cols{grid-template-columns:1fr}.stages{grid-template-columns:repeat(5,minmax(0,1fr))}.st{padding:6px}}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.box h2{font-size:14px;margin:0 0 8px}
+textarea{width:100%;height:200px;resize:vertical;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12.5px;line-height:1.6}
+.err{color:#c0392b;font-size:13px;min-height:18px;margin-top:6px}
+.wrap{overflow-x:auto}
+table{border-collapse:separate;border-spacing:2px;font-size:12px}
+th{color:var(--mut);font-weight:400;padding:0 0 2px;min-width:34px}
+th.cur{color:var(--ink);font-weight:600}
+td.lab{position:sticky;left:0;background:var(--panel);padding-right:10px;white-space:nowrap;z-index:1}
+td.c{height:26px;min-width:34px;text-align:center;border-radius:5px;color:#fff;font-size:11px;font-weight:600}
+td.c.stall{background-image:repeating-linear-gradient(135deg,rgba(0,0,0,.3) 0 5px,transparent 5px 10px)}
+td.c.flush{background:var(--line);color:var(--mut)}
+td.cur{box-shadow:0 0 0 2px var(--hl)}
+td.c i{font-style:normal;color:#ffd866;margin-left:1px}
+.key{color:var(--mut);font-size:12.5px;margin:8px 0 0}
+.metrics{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px}
+.metrics div{font-size:12px;color:var(--mut)}.metrics b{display:block;font-size:20px;color:var(--ink)}
+.regs{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;font-size:11px}
+.regs div{padding:2px 5px;border-radius:4px;display:flex;justify-content:space-between;color:var(--mut)}
+.regs div.nz{color:var(--ink)}.regs div.ch{background:var(--hl);color:var(--ink)}
+.chips{font-size:12px;margin-top:8px;color:var(--mut)}
+.log{font-size:12px;color:var(--mut);margin:0;padding-left:0;list-style:none;max-height:150px;overflow:auto}
+.log li{padding:2px 0}.log b{color:var(--ink)}
+.side{display:grid;gap:14px;align-content:start}
+</style>
+</head>
+<body>
+<main>
+<h1>RISC-V pipeline visualizer</h1>
+<p class="sub">Write a few instructions, then step through a 5-stage pipeline one clock cycle at a time. Stalls, forwarding and branch flushes show up in the timing diagram as they happen.</p>
+
+<div class="bar">
+  <button id="step" class="p">Step</button>
+  <button id="back">Back</button>
+  <button id="run">Run</button>
+  <button id="reset">Reset</button>
+  <select id="preset" aria-label="Example program"></select>
+  <label class="t"><input type="checkbox" id="fwd" checked> Data forwarding</label>
+</div>
+
+<div class="stages" id="stages"></div>
+
+<div class="cols">
+  <div class="side">
+    <div class="box">
+      <h2>Program</h2>
+      <textarea id="src" spellcheck="false" aria-label="Assembly program"></textarea>
+      <div class="err" id="err"></div>
+      <p class="key">Supports add, sub, and, or, addi, lw, sw, beq, bne, nop, and labels.</p>
+    </div>
+    <div class="box"><h2>Registers</h2><div class="regs" id="regs"></div><div class="chips" id="mem"></div></div>
+  </div>
+  <div class="side">
+    <div class="box">
+      <div class="metrics" id="metrics"></div>
+      <div class="wrap" id="wrap"><table id="tl"></table></div>
+      <p class="key">Hatched cell: stalled. Grey ✕: flushed after a taken branch. <span style="color:#d4a017">⇢</span> on EX: operand forwarded.</p>
+    </div>
+    <div class="box"><h2>Events</h2><ul class="log" id="log"></ul></div>
+  </div>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const PRESETS={
+"Data hazards":"addi x1, x0, 5\naddi x2, x0, 7\nadd x3, x1, x2\nsub x4, x3, x1\nsw x4, 0(x0)",
+"Load-use stall":"addi x1, x0, 9\nsw x1, 0(x0)\nlw x2, 0(x0)\nadd x3, x2, x2\nadd x4, x3, x2",
+"Loop with branch":"addi x1, x0, 3\naddi x2, x0, 0\nloop: add x2, x2, x1\naddi x1, x1, -1\nbne x1, x0, loop\nsw x2, 0(x0)"
+};
+const SG=['IF','ID','EX','MEM','WB'];
+const R=t=>{const m=/^x(\d+)$/i.exec(t||'');if(!m||+m[1]>31)throw Error('Bad register "'+t+'". Use x0 to x31.');return +m[1]};
+function parse(src){
+  const labels={},raw=[];
+  for(let l of src.split('\n')){l=l.replace(/#.*/,'').trim();let m;while((m=/^(\w+):\s*(.*)$/.exec(l))){labels[m[1]]=raw.length;l=m[2]}if(l)raw.push(l)}
+  return raw.map(t=>{
+    const [op,...a]=t.split(/[\s,()]+/).filter(Boolean);
+    const I={op:op.toLowerCase(),text:t,rd:null,rs1:null,rs2:null,imm:0};
+    const n=k=>{if(a.length<k)throw Error('Missing operand in "'+t+'"')};
+    if(['add','sub','and','or'].includes(I.op)){n(3);I.rd=R(a[0]);I.rs1=R(a[1]);I.rs2=R(a[2])}
+    else if(I.op=='addi'){n(3);I.rd=R(a[0]);I.rs1=R(a[1]);I.imm=+a[2]}
+    else if(I.op=='lw'){n(3);I.rd=R(a[0]);I.imm=+a[1];I.rs1=R(a[2])}
+    else if(I.op=='sw'){n(3);I.rs2=R(a[0]);I.imm=+a[1];I.rs1=R(a[2])}
+    else if(I.op=='beq'||I.op=='bne'){n(3);I.rs1=R(a[0]);I.rs2=R(a[1]);if(!(a[2] in labels))throw Error('Unknown label "'+a[2]+'"');I.tgt=labels[a[2]]}
+    else if(I.op!='nop')throw Error('Unsupported instruction "'+op+'"');
+    if(isNaN(I.imm))throw Error('Bad number in "'+t+'"');
+    return I});
+}
+const wr=I=>I.rd!=null&&I.rd!==0;
+const srcs=I=>[I.rs1,I.rs2].filter(r=>r!=null&&r!==0);
+const alu=(op,a,b)=>op=='sub'?(a-b)|0:op=='and'?a&b:op=='or'?a|b:(a+b)|0;
+const init=()=>({cyc:0,pc:0,regs:Array(32).fill(0),mem:{},L:{IF:null,ID:null,EX:null,MEM:null,WB:null},rows:[],ev:[],done:false,ret:0,stalls:0,flushes:0});
+
+// Pure simulator core: step(state) -> new state. No DOM access.
+function step(S,P,fwd){
+  const s=JSON.parse(JSON.stringify(S)),o=s.L,n={IF:null,ID:null,EX:null,MEM:null,WB:null},c=s.cyc,log=t=>s.ev.push({c:c+1,t});
+  const cell=(x,st,k)=>{s.rows[x.id].cells[c+1]={s:st,k:k||''}};
+  const fetch=()=>{if(s.pc>=P.length)return null;if(s.rows.length>=120){if(!s.capped){s.capped=1;log('Stopped fetching after 120 instructions.')}return null}
+    const x={id:s.rows.length,i:s.pc};s.rows.push({id:x.id,i:x.i,cells:{}});s.pc++;return x};
+  // WB (register file written in first half of cycle)
+  if(o.WB){const I=P[o.WB.i];if(wr(I))s.regs[I.rd]=o.WB.val;s.ret++}
+  // MEM
+  if(o.MEM){const x=o.MEM,I=P[x.i];x.val=x.res;if(I.op=='lw')x.val=s.mem[x.res]||0;if(I.op=='sw')s.mem[x.res]=x.sd;n.WB=x}
+  // EX
+  let flush=false;
+  if(o.EX){const x=o.EX,I=P[x.i];let a=x.a,b=x.b;
+    const fw=(r,v)=>{if(r==null||r===0)return v;const m=o.MEM,w=o.WB;let from=null,val=v;
+      if(m&&wr(P[m.i])&&P[m.i].rd===r){from='MEM';val=m.res}
+      else if(w&&wr(P[w.i])&&P[w.i].rd===r){from='WB';val=w.val}
+      if(from){const ce=s.rows[x.id].cells[c];ce.f=(ce.f?ce.f+' ':'')+'x'+r+' from '+from;log('Forwarded x'+r+' from '+from+' into "'+I.text+'"')}
+      return val};
+    if(fwd){a=fw(I.rs1,a);b=fw(I.rs2,b)}
+    if(I.op=='lw'||I.op=='sw'){x.res=a+I.imm;x.sd=b}
+    else if(I.op=='beq'||I.op=='bne'){if(I.op=='beq'?a==b:a!=b){flush=true;s.pc=I.tgt;log('Branch taken in "'+I.text+'": flushing 2 instructions')}}
+    else if(I.op!='nop')x.res=alu(I.op,a,I.op=='addi'?I.imm:b);
+    n.MEM=x}
+  // ID hazard check
+  let stall=false;
+  if(o.ID&&!flush){const I=P[o.ID.i];
+    for(const r of srcs(I)){const e=o.EX&&wr(P[o.EX.i])&&P[o.EX.i].rd===r,m=o.MEM&&wr(P[o.MEM.i])&&P[o.MEM.i].rd===r;
+      if(fwd?(e&&P[o.EX.i].op=='lw'):(e||m)){stall=true;log('Stall: "'+I.text+'" waits for x'+r)}}}
+  if(flush){s.flushes+=2;n.IF=null;n.ID=null;[o.IF,o.ID].forEach(x=>x&&cell(x,'✕','flush'));n.IF=fetch()}
+  else if(stall){s.stalls++;n.ID=o.ID;n.IF=o.IF}
+  else{if(o.ID){const x=o.ID,I=P[x.i];x.a=I.rs1!=null?s.regs[I.rs1]:0;x.b=I.rs2!=null?s.regs[I.rs2]:0;n.EX=x}
+    n.ID=o.IF;n.IF=fetch()}
+  SG.forEach(st=>{const x=n[st];if(x)cell(x,st,stall&&(st=='IF'||st=='ID')?'stall':'')});
+  s.cyc=c+1;s.L=n;s.ev=s.ev.slice(-60);
+  s.done=SG.every(k=>!n[k])&&(s.pc>=P.length||!!s.capped);
+  return s;
+}
+
+// UI
+let P=[],S=init(),hist=[],timer=null;
+const fwdOn=()=>$('#fwd').checked;
+function reset(){stop();$('#err').textContent='';
+  try{P=parse($('#src').value)}catch(e){$('#err').textContent=e.message;return}
+  S=init();hist=[];render()}
+function stop(){if(timer){clearInterval(timer);timer=null}$('#run').textContent='Run'}
+function next(){if(S.done||!P.length){stop();return}hist.push(S);if(hist.length>400)hist.shift();S=step(S,P,fwdOn());render();if(S.done)stop()}
+function back(){stop();if(hist.length){S=hist.pop();render()}}
+function render(){
+  $('#stages').innerHTML=SG.map(k=>{const x=S.L[k];
+    if(!x)return `<div class="st empty"><b>${k}</b><span>idle</span></div>`;
+    const ce=S.rows[x.id].cells[S.cyc]||{};
+    return `<div class="st ${k} ${ce.k=='stall'?'stall':''}"><b>${k}${ce.k=='stall'?' (held)':''}</b><span>${esc(P[x.i].text)}</span></div>`}).join('');
+  const cols=Math.max(S.cyc,12);
+  let h='<tr><th></th>';for(let i=1;i<=cols;i++)h+=`<th class="${i==S.cyc?'cur':''}">${i}</th>`;h+='</tr>';
+  for(const r of S.rows){h+=`<tr><td class="lab">${esc(P[r.i].text)}</td>`;
+    for(let i=1;i<=cols;i++){const ce=r.cells[i];
+      h+=ce?`<td class="c ${ce.s=='✕'?'':ce.s} ${ce.k} ${i==S.cyc?'cur':''}" title="${ce.f?'Forwarded: '+ce.f:''}">${ce.s}${ce.f?'<i>⇢</i>':''}</td>`:`<td class="c ${i==S.cyc?'cur':''}"></td>`}
+    h+='</tr>'}
+  $('#tl').innerHTML=h;
+  const w=$('#wrap');w.scrollLeft=Math.max(0,(S.cyc-9)*36);
+  const cpi=S.ret?(S.cyc/S.ret).toFixed(2):'–';
+  $('#metrics').innerHTML=[['Cycle',S.cyc],['Retired',S.ret],['CPI',cpi],['Stall cycles',S.stalls],['Flushed',S.flushes]].map(([a,b])=>`<div>${a}<b>${b}</b></div>`).join('');
+  const pv=hist.length?hist[hist.length-1].regs:S.regs;
+  $('#regs').innerHTML=S.regs.map((v,i)=>`<div class="${v?'nz':''} ${v!==pv[i]?'ch':''}"><span>x${i}</span><span>${v}</span></div>`).join('');
+  const mk=Object.keys(S.mem).filter(k=>S.mem[k]);
+  $('#mem').textContent=mk.length?'Memory: '+mk.map(k=>`[${k}]=${S.mem[k]}`).join('  '):'Memory: all zero';
+  $('#log').innerHTML=S.ev.slice().reverse().slice(0,30).map(e=>`<li><b>Cycle ${e.c}</b> ${esc(e.t)}</li>`).join('')||'<li>Press Step to start.</li>';
+  $('#step').disabled=S.done;$('#back').disabled=!hist.length;
+}
+const esc=t=>String(t).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+$('#preset').innerHTML=Object.keys(PRESETS).map(k=>`<option>${k}</option>`).join('');
+$('#preset').onchange=()=>{$('#src').value=PRESETS[$('#preset').value];reset()};
+$('#step').onclick=()=>{stop();next()};
+$('#back').onclick=back;$('#reset').onclick=reset;
+$('#run').onclick=()=>{if(timer){stop();return}if(S.done)reset();$('#run').textContent='Pause';timer=setInterval(next,450)};
+$('#fwd').onchange=reset;
+$('#src').oninput=()=>{clearTimeout(window._d);window._d=setTimeout(reset,500)};
+document.addEventListener('keydown',e=>{if(e.target.tagName=='TEXTAREA'||e.target.tagName=='SELECT')return;if(e.key=='ArrowRight'){stop();next()}if(e.key=='ArrowLeft')back()});
+$('#src').value=PRESETS["Data hazards"];reset();
+</script>
+</body>
+</html>
